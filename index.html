@@ -1,0 +1,2517 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Line Follower Simulator - Interactive Playground</title>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.11.11/lib/p5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
+    <style>
+      :root {
+        /* Base colors */
+        --bg-dark: #1a1a1a;
+        --bg-medium: #2a2a2a;
+        --bg-light: #3a3a3a;
+
+        /* Accent colors */
+        --accent-primary: #00ff00;
+        --accent-secondary: #00ccff;
+        --accent-warning: #ffff00;
+        --accent-error: #ff0000;
+
+        /* Text */
+        --text-primary: #e0e0e0;
+        --text-secondary: #a0a0a0;
+        --text-accent: #00ff00;
+
+        /* UI elements */
+        --border: 2px solid var(--accent-primary);
+        --shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+      }
+
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: "JetBrains Mono", "Fira Code", "Courier New", monospace;
+        background: var(--bg-dark);
+        color: var(--text-primary);
+        overflow: hidden;
+      }
+
+      .split-pane {
+        display: flex;
+        height: 100vh;
+        width: 100vw;
+      }
+
+      #editor-panel {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-dark);
+        min-width: 300px;
+      }
+
+      #canvas-panel {
+        flex: 2;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        min-width: 400px;
+      }
+
+      .resizer {
+        width: 4px;
+        background: var(--accent-primary);
+        cursor: col-resize;
+        transition: background 0.2s;
+        flex-shrink: 0;
+      }
+
+      .resizer:hover {
+        background: var(--accent-secondary);
+        box-shadow: var(--shadow);
+      }
+
+      #editor-toolbar {
+        background: var(--bg-medium);
+        border-bottom: 1px solid var(--accent-primary);
+        padding: 8px 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        font-size: 12px;
+      }
+
+      .toolbar-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .toolbar-label {
+        color: var(--text-secondary);
+        font-size: 11px;
+        white-space: nowrap;
+      }
+
+      #project-name {
+        width: 120px;
+      }
+
+      #project-list {
+        width: 140px;
+      }
+
+      #map-selector {
+        width: 120px;
+      }
+
+      #example-selector {
+        width: 140px;
+      }
+
+      #editor {
+        flex: 1;
+        overflow: hidden;
+      }
+
+      #editor-status {
+        background: var(--bg-medium);
+        border-top: 1px solid var(--accent-primary);
+        padding: 6px 12px;
+        font-size: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .status-success {
+        color: var(--accent-primary);
+      }
+
+      .status-error {
+        color: var(--accent-error);
+      }
+
+      .status-warning {
+        color: var(--accent-warning);
+      }
+
+      button {
+        background: var(--bg-dark);
+        border: 1px solid var(--accent-primary);
+        color: var(--accent-primary);
+        padding: 6px 12px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 12px;
+        transition: all 0.2s;
+        border-radius: 3px;
+      }
+
+      button:hover {
+        background: var(--accent-primary);
+        color: var(--bg-dark);
+        box-shadow: var(--shadow);
+      }
+
+      button:active {
+        transform: scale(0.95);
+      }
+
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      input[type="text"] {
+        background: var(--bg-dark);
+        border: 1px solid var(--accent-primary);
+        color: var(--text-primary);
+        padding: 6px 8px;
+        font-family: inherit;
+        font-size: 12px;
+        border-radius: 3px;
+      }
+
+      select {
+        background: var(--bg-dark);
+        border: 1px solid var(--accent-primary);
+        color: var(--text-primary);
+        padding: 6px 8px;
+        font-family: inherit;
+        font-size: 12px;
+        cursor: pointer;
+        border-radius: 3px;
+      }
+
+      .floating-panel {
+        background: var(--bg-medium);
+        border: var(--border);
+        border-radius: 4px;
+        box-shadow: var(--shadow);
+        padding: 12px;
+        position: absolute;
+        z-index: 1000;
+      }
+
+      .floating-panel.collapsible .panel-header {
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+        user-select: none;
+      }
+
+      .floating-panel.collapsible .panel-content {
+        max-height: 600px;
+        overflow-y: auto;
+        transition:
+          max-height 0.3s ease,
+          opacity 0.3s ease;
+      }
+
+      .floating-panel.collapsed .panel-content {
+        max-height: 0;
+        opacity: 0;
+        overflow: hidden;
+      }
+
+      #controls-panel {
+        top: 10px;
+        right: 10px;
+        min-width: 250px;
+        max-width: 300px;
+      }
+
+      .score-item {
+        display: flex;
+        justify-content: space-between;
+        margin: 6px 0;
+        font-size: 12px;
+      }
+
+      .score-item.total {
+        font-size: 16px;
+        font-weight: bold;
+        color: var(--accent-primary);
+        border-bottom: 1px solid var(--accent-primary);
+        padding-bottom: 6px;
+        margin-bottom: 8px;
+      }
+
+      .score-label {
+        color: var(--text-secondary);
+      }
+
+      .score-value {
+        color: var(--accent-primary);
+        font-family: "Courier New", monospace;
+      }
+
+      .score-breakdown {
+        font-size: 11px;
+        color: var(--text-secondary);
+      }
+
+      .panel-header {
+        font-weight: bold;
+        color: var(--accent-primary);
+        font-size: 14px;
+      }
+
+      .control-row {
+        margin: 8px 0;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .control-row label {
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+
+      #status-bar {
+        display: flex;
+        gap: 16px;
+        margin: 8px 0;
+        font-size: 11px;
+        font-family: "Courier New", monospace;
+      }
+
+      #status-bar span {
+        color: var(--accent-warning);
+      }
+
+      canvas {
+        display: block;
+      }
+
+      .toolbar-separator {
+        width: 1px;
+        height: 20px;
+        background: var(--accent-primary);
+        margin: 0 4px;
+        opacity: 0.3;
+      }
+
+      @media (max-width: 1400px) {
+        #editor-toolbar {
+          gap: 6px;
+        }
+
+        .toolbar-group {
+          gap: 4px;
+        }
+
+        .toolbar-separator {
+          display: none;
+        }
+      }
+
+      /* Modal styles */
+      .modal {
+        display: none;
+        position: fixed;
+        z-index: 2000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        align-items: center;
+        justify-content: center;
+      }
+
+      .modal.show {
+        display: flex;
+      }
+
+      .modal-content {
+        background: var(--bg-medium);
+        border: var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        max-width: 500px;
+        width: 90%;
+        box-shadow: var(--shadow);
+      }
+
+      .modal-header {
+        color: var(--accent-primary);
+        font-size: 16px;
+        font-weight: bold;
+        margin-bottom: 16px;
+      }
+
+      .modal-body {
+        margin-bottom: 16px;
+      }
+
+      .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
+      .form-group {
+        margin-bottom: 12px;
+      }
+
+      .form-group label {
+        display: block;
+        color: var(--text-secondary);
+        font-size: 12px;
+        margin-bottom: 4px;
+      }
+
+      .form-group input[type="text"],
+      .form-group input[type="number"],
+      .form-group input[type="file"] {
+        width: 100%;
+      }
+
+      .form-row {
+        display: flex;
+        gap: 12px;
+      }
+
+      .form-row .form-group {
+        flex: 1;
+      }
+      .footer {
+        position: absolute;
+        z-index: 1000;
+        bottom: 20px;
+        right: 10px
+      }
+    </style>
+  </head>
+  <body>
+    <div class="split-pane">
+      <div id="editor-panel">
+        <div id="editor-toolbar">
+          <div class="toolbar-group">
+            <button
+              onclick="runCode(event)"
+              title="Compile and run (Ctrl+Enter)"
+            >
+              ▶ Run
+            </button>
+            <button onclick="shareToURL()" title="Copy shareable URL">
+              🔗 Share
+            </button>
+          </div>
+
+          <div class="toolbar-separator"></div>
+
+          <div class="toolbar-group">
+            <span class="toolbar-label">Map:</span>
+            <select id="map-selector" onchange="loadSelectedMap()">
+              <option value="novice">Novice Course</option>
+            </select>
+            <button onclick="openCustomMapModal()" title="Add custom map">
+              +
+            </button>
+          </div>
+
+          <div class="toolbar-separator"></div>
+
+          <div class="toolbar-group">
+            <span class="toolbar-label">Example:</span>
+            <select id="example-selector" onchange="loadSelectedExample()">
+              <option value="">Load Example...</option>
+            </select>
+          </div>
+
+          <div class="toolbar-separator"></div>
+
+          <div class="toolbar-group">
+            <input
+              type="text"
+              id="project-name"
+              placeholder="Project name..."
+              title="Enter project name"
+            />
+            <button
+              onclick="saveProject()"
+              title="Save current code as project"
+            >
+              💾
+            </button>
+            <select
+              id="project-list"
+              onchange="loadSelectedProject()"
+              title="Load saved project"
+            >
+              <option value="">Load Project...</option>
+            </select>
+            <button
+              onclick="deleteCurrentProject()"
+              title="Delete selected project"
+            >
+              🗑
+            </button>
+          </div>
+        </div>
+        <div id="editor"></div>
+        <div id="editor-status">
+          <span id="compile-status">Ready</span>
+          <span id="editor-info">JavaScript</span>
+        </div>
+      </div>
+
+      <div class="resizer" id="resizer"></div>
+
+      <div id="canvas-panel">
+        <div id="controls-panel" class="floating-panel collapsible">
+          <div class="panel-header" onclick="togglePanel()">
+            <span>Status</span>
+            <span id="panel-toggle">−</span>
+          </div>
+          <div class="panel-content">
+            <div class="control-row">
+              <button onclick="event.stopPropagation(); runCode(event)" title="Start contest (R)">
+                ▶ Run
+              </button>
+              <button onclick="lfs.contestStop()" title="Stop contest (Space)">
+                ⏸ Stop
+              </button>
+              <button onclick="resetRobot()" title="Reset robot to start">
+                ↻ Reset
+              </button>
+            </div>
+
+            <div id="status-bar">
+              <span id="time">00:00.000</span>
+              <span id="distance">0.0"</span>
+              <span id="fps">60 FPS</span>
+            </div>
+
+            <div
+              style="
+                margin-top: 12px;
+                padding-top: 12px;
+                border-top: 1px solid var(--accent-primary);
+              "
+            >
+              <div class="score-item total">
+                <span class="score-label">Score:</span>
+                <span class="score-value" id="score-total">0.0</span>
+              </div>
+              <div class="score-breakdown">
+                <div class="score-item">
+                  <span class="score-label">Time:</span>
+                  <span class="score-value" id="score-time">0.0</span>
+                </div>
+                <div class="score-item">
+                  <span class="score-label">Accuracy:</span>
+                  <span class="score-value" id="score-accuracy">0.0</span>
+                </div>
+                <div class="score-item">
+                  <span class="score-label">Efficiency:</span>
+                  <span class="score-value" id="score-efficiency">0.0</span>
+                </div>
+                <div class="score-item">
+                  <span class="score-label">Complete:</span>
+                  <span class="score-value" id="score-completion">0.0%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="footer">
+          <a href="https://github.com/80avin/lf-simulator" target="_blank" rel="noopener noreferrer">
+              <img src="https://img.shields.io/badge/github-lf--simulator-blue?logo=github" alt="View on GitHub repository">
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Custom Map Modal -->
+    <div id="custom-map-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">📍 Add Custom Map</div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Map Name:</label>
+            <input
+              type="text"
+              id="custom-map-name"
+              placeholder="My Custom Course"
+            />
+          </div>
+
+          <div class="form-group">
+            <label>Image URL:</label>
+            <input
+              type="text"
+              id="custom-map-url"
+              placeholder="https://example.com/map.jpg"
+            />
+          </div>
+
+          <div class="form-group">
+            <label>OR Upload Image:</label>
+            <input type="file" id="custom-map-file" accept="image/*" />
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>DPI (pixels/inch):</label>
+              <input type="number" id="custom-map-dpi" value="64" min="1" />
+            </div>
+            <div class="form-group">
+              <label>Course Length (inches):</label>
+              <input type="number" id="custom-map-length" value="200" min="1" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Start X (inches):</label>
+              <input type="number" id="custom-map-x" value="27" step="1" />
+            </div>
+            <div class="form-group">
+              <label>Start Y (inches):</label>
+              <input type="number" id="custom-map-y" value="12" step="1" />
+            </div>
+            <div class="form-group">
+              <label>Start Heading (deg):</label>
+              <input
+                type="number"
+                id="custom-map-heading"
+                value="0"
+                min="0"
+                max="359"
+              />
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button onclick="closeCustomMapModal()">Cancel</button>
+          <button onclick="saveCustomMap()">Add Map</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // ============================================
+      // JSDOC TYPE DEFINITIONS FOR AUTOCOMPLETE
+      // ============================================
+      const TYPE_DEFINITIONS = `
+/**
+ * Controller API - Interface for controlling the robot
+ * @typedef {Object} ControllerAPI
+ * @property {function(): number[]} getSensorReadings - Get array of sensor values (0.0=black, 1.0=white)
+ * @property {function(number): void} setSpeed - Set target speed in inches/second
+ * @property {function(number): void} setTurnRate - Set target turn rate in degrees/second
+ * @property {function(): RobotState} getState - Get current robot state
+ * @property {function(): number} getTime - Get current contest time in seconds
+ */
+
+/**
+ * Robot state information
+ * @typedef {Object} RobotState
+ * @property {number} x - Position X (inches)
+ * @property {number} y - Position Y (inches)
+ * @property {number} heading - Heading (degrees, 0-360)
+ * @property {number} speed - Current speed (inches/second)
+ * @property {number} turnRate - Current turn rate (degrees/second)
+ * @property {number} distanceTraveled - Total distance traveled (inches)
+ */
+
+/**
+ * User controller class - Implement this!
+ * @class Controller
+ */
+class Controller {
+    /**
+     * Initialize your controller
+     * Called once when the controller is loaded
+     * @param {ControllerAPI} api - The controller API
+     */
+    init(api) {
+        // Initialize your variables here
+    }
+
+    /**
+     * Update function - called every frame
+     * Implement your line following logic here
+     * @param {ControllerAPI} api - The controller API
+     * @param {number[]} sensors - Sensor readings array
+     */
+    update(api, sensors) {
+        // Your control logic here
+        // Example: api.setSpeed(20); api.setTurnRate(0);
+    }
+}
+`;
+
+      // ============================================
+      // EXAMPLE CONTROLLERS
+      // ============================================
+      const EXAMPLES = {
+        pid: {
+          name: "PID Controller",
+          description: "Full PID with tunable gains - best accuracy",
+          code: `/**
+ * Simple PID Line Follower Controller
+ *
+ * This example demonstrates a basic PID controller for line following.
+ * The robot uses a weighted average of sensor readings to determine
+ * the line position, then applies PID control to follow it.
+ */
+class Controller {
+    init(api) {
+        // PID gains - tune these for your course!
+        this.Kp = 150;  // Proportional: responds to current error
+        this.Ki = 0.5;  // Integral: eliminates steady-state error
+        this.Kd = 50;   // Derivative: dampens oscillations
+
+        // PID state
+        this.lastError = 0;
+        this.integral = 0;
+
+        // Speed settings
+        this.baseSpeed = 15;  // Base speed in inches/second
+    }
+
+    update(api, sensors) {
+        // Calculate error (line position relative to center)
+        const error = this.calculateError(sensors);
+
+        // PID calculation
+        const dt = 0.01667;  // 60 FPS
+        this.integral += error * dt;
+        this.integral = Math.max(-10, Math.min(10, this.integral));  // Anti-windup
+
+        const derivative = (error - this.lastError) / dt;
+        const correction = this.Kp * error + this.Ki * this.integral + this.Kd * derivative;
+
+        this.lastError = error;
+
+        // Adaptive speed: slow down for sharp turns
+        const speed = this.baseSpeed * (1 - Math.abs(error) * 0.3);
+
+        // Apply control
+        api.setSpeed(speed);
+        api.setTurnRate(correction);
+    }
+
+    /**
+     * Calculate line position error using weighted average
+     * Returns: position relative to center (-4 to +4 for 9 sensors)
+     */
+    calculateError(sensors) {
+        const n = sensors.length;
+        let lineSum = 0;
+        let positionSum = 0;
+
+        for (let i = 0; i < n; i++) {
+            const lineValue = 1.0 - sensors[i];  // Invert: 0=white, 1=black
+            lineSum += lineValue;
+            positionSum += lineValue * (i - (n-1)/2);  // Weight by position
+        }
+
+        // Return error, or default to edge if line not detected
+        return lineSum > 0.1 ? positionSum / lineSum : n/4;
+    }
+}`,
+        },
+
+        proportional: {
+          name: "Proportional Controller",
+          description: "Simple P-only control - easy to understand",
+          code: `/**
+ * Proportional-Only Line Follower
+ *
+ * Simplest controller: correction proportional to error.
+ * Great for learning - only one parameter to tune!
+ */
+class Controller {
+    init(api) {
+        this.Kp = 100;  // Proportional gain - tune this!
+        this.baseSpeed = 18;
+    }
+
+    update(api, sensors) {
+        const error = this.calculateError(sensors);
+
+        // P control: turn correction = gain × error
+        api.setSpeed(this.baseSpeed);
+        api.setTurnRate(this.Kp * error);
+    }
+
+    calculateError(sensors) {
+        const n = sensors.length;
+        let lineSum = 0;
+        let positionSum = 0;
+
+        for (let i = 0; i < n; i++) {
+            const lineValue = 1.0 - sensors[i];
+            lineSum += lineValue;
+            positionSum += lineValue * (i - (n-1)/2);
+        }
+
+        return lineSum > 0.1 ? positionSum / lineSum : 0;
+    }
+}`,
+        },
+
+        bangbang: {
+          name: "Bang-Bang Controller",
+          description: "On/off control - fast but oscillates",
+          code: `/**
+ * Bang-Bang (On-Off) Line Follower
+ *
+ * Simple binary control: turn hard left or hard right.
+ * Fast but causes oscillation. Good for sharp turns!
+ */
+class Controller {
+    init(api) {
+        this.turnRate = 200;  // Turn rate in degrees/second
+        this.threshold = 0.5; // Error threshold for switching
+        this.baseSpeed = 16;
+    }
+
+    update(api, sensors) {
+        const error = this.calculateError(sensors);
+
+        // Bang-bang: full turn left or right based on threshold
+        let turn = 0;
+        if (error > this.threshold) {
+            turn = this.turnRate;  // Turn right
+        } else if (error < -this.threshold) {
+            turn = -this.turnRate;  // Turn left
+        }
+
+        // Slow down when turning
+        const speed = Math.abs(turn) > 0 ? this.baseSpeed * 0.7 : this.baseSpeed;
+
+        api.setSpeed(speed);
+        api.setTurnRate(turn);
+    }
+
+    calculateError(sensors) {
+        const n = sensors.length;
+        let lineSum = 0;
+        let positionSum = 0;
+
+        for (let i = 0; i < n; i++) {
+            const lineValue = 1.0 - sensors[i];
+            lineSum += lineValue;
+            positionSum += lineValue * (i - (n-1)/2);
+        }
+
+        return lineSum > 0.1 ? positionSum / lineSum : 0;
+    }
+}`,
+        },
+
+        statemachine: {
+          name: "State Machine Controller",
+          description: "Handles different scenarios - intersections, lost line",
+          code: `/**
+ * State Machine Line Follower
+ *
+ * Uses different behaviors for different situations:
+ * - FOLLOWING: normal line following
+ * - LOST: line not detected, search for it
+ * - SHARP_TURN: detected sharp turn
+ */
+class Controller {
+    init(api) {
+        this.state = 'FOLLOWING';
+        this.Kp = 120;
+        this.lostTimer = 0;
+        this.lastError = 0;
+    }
+
+    update(api, sensors) {
+        const error = this.calculateError(sensors);
+        const lineDetected = this.isLineDetected(sensors);
+
+        // State machine logic
+        switch(this.state) {
+            case 'FOLLOWING':
+                if (!lineDetected) {
+                    this.state = 'LOST';
+                    this.lostTimer = 0;
+                } else if (Math.abs(error) > 3) {
+                    this.state = 'SHARP_TURN';
+                } else {
+                    this.followLine(api, error);
+                }
+                break;
+
+            case 'LOST':
+                this.lostTimer++;
+                // Try to recover by turning in direction of last error
+                api.setSpeed(8);
+                api.setTurnRate(this.lastError > 0 ? 150 : -150);
+
+                if (lineDetected) {
+                    this.state = 'FOLLOWING';
+                } else if (this.lostTimer > 60) {
+                    // Give up after 1 second
+                    api.setSpeed(0);
+                }
+                break;
+
+            case 'SHARP_TURN':
+                // Slow down for sharp turns
+                api.setSpeed(10);
+                api.setTurnRate(this.Kp * error * 1.5);
+
+                if (Math.abs(error) < 2) {
+                    this.state = 'FOLLOWING';
+                }
+                break;
+        }
+
+        this.lastError = error;
+    }
+
+    followLine(api, error) {
+        const baseSpeed = 20;
+        const speed = baseSpeed * (1 - Math.abs(error) * 0.2);
+
+        api.setSpeed(speed);
+        api.setTurnRate(this.Kp * error);
+    }
+
+    isLineDetected(sensors) {
+        let lineSum = 0;
+        for (let i = 0; i < sensors.length; i++) {
+            lineSum += (1.0 - sensors[i]);
+        }
+        return lineSum > 0.5;
+    }
+
+    calculateError(sensors) {
+        const n = sensors.length;
+        let lineSum = 0;
+        let positionSum = 0;
+
+        for (let i = 0; i < n; i++) {
+            const lineValue = 1.0 - sensors[i];
+            lineSum += lineValue;
+            positionSum += lineValue * (i - (n-1)/2);
+        }
+
+        return lineSum > 0.1 ? positionSum / lineSum : this.lastError;
+    }
+}`,
+        },
+
+        fuzzy: {
+          name: "Fuzzy Logic Controller",
+          description: "Advanced: uses fuzzy rules for smooth control",
+          code: `/**
+ * Fuzzy Logic Line Follower
+ *
+ * Uses fuzzy logic to map error to turn rate.
+ * Linguistic variables: NegativeBig, NegativeSmall, Zero, PositiveSmall, PositiveBig
+ * Smooth transitions between states.
+ */
+class Controller {
+    init(api) {
+        this.baseSpeed = 18;
+    }
+
+    update(api, sensors) {
+        const error = this.calculateError(sensors);
+
+        // Fuzzification: calculate membership for each fuzzy set
+        const fuzzyError = this.fuzzify(error);
+
+        // Fuzzy inference: apply rules
+        const fuzzyTurn = this.inference(fuzzyError);
+
+        // Defuzzification: convert fuzzy output to crisp value
+        const turnRate = this.defuzzify(fuzzyTurn);
+
+        // Adaptive speed based on error magnitude
+        const speed = this.baseSpeed * (1 - Math.abs(error) * 0.25);
+
+        api.setSpeed(speed);
+        api.setTurnRate(turnRate);
+    }
+
+    fuzzify(error) {
+        // Map error to fuzzy sets using triangular membership functions
+        return {
+            NB: this.triangleMF(error, -6, -4, -2),  // Negative Big
+            NS: this.triangleMF(error, -3, -1.5, 0),  // Negative Small
+            Z:  this.triangleMF(error, -1, 0, 1),     // Zero
+            PS: this.triangleMF(error, 0, 1.5, 3),    // Positive Small
+            PB: this.triangleMF(error, 2, 4, 6)       // Positive Big
+        };
+    }
+
+    triangleMF(x, a, b, c) {
+        // Triangular membership function
+        if (x <= a || x >= c) return 0;
+        if (x === b) return 1;
+        if (x < b) return (x - a) / (b - a);
+        return (c - x) / (c - b);
+    }
+
+    inference(fuzzyError) {
+        // Fuzzy rules:
+        // IF error is NB THEN turn is NB (turn hard left)
+        // IF error is NS THEN turn is NS (turn soft left)
+        // IF error is Z THEN turn is Z (go straight)
+        // IF error is PS THEN turn is PS (turn soft right)
+        // IF error is PB THEN turn is PB (turn hard right)
+
+        return {
+            NB: fuzzyError.NB,
+            NS: fuzzyError.NS,
+            Z:  fuzzyError.Z,
+            PS: fuzzyError.PS,
+            PB: fuzzyError.PB
+        };
+    }
+
+    defuzzify(fuzzyTurn) {
+        // Center of gravity defuzzification
+        // Map fuzzy sets to turn rates
+        const turnRates = {
+            NB: -250,  // Hard left
+            NS: -100,  // Soft left
+            Z:  0,     // Straight
+            PS: 100,   // Soft right
+            PB: 250    // Hard right
+        };
+
+        let numerator = 0;
+        let denominator = 0;
+
+        for (let key in fuzzyTurn) {
+            numerator += fuzzyTurn[key] * turnRates[key];
+            denominator += fuzzyTurn[key];
+        }
+
+        return denominator > 0 ? numerator / denominator : 0;
+    }
+
+    calculateError(sensors) {
+        const n = sensors.length;
+        let lineSum = 0;
+        let positionSum = 0;
+
+        for (let i = 0; i < n; i++) {
+            const lineValue = 1.0 - sensors[i];
+            lineSum += lineValue;
+            positionSum += lineValue * (i - (n-1)/2);
+        }
+
+        return lineSum > 0.1 ? positionSum / lineSum : 0;
+    }
+}`,
+        },
+      };
+
+      // Set default controller
+      const DEFAULT_CONTROLLER = EXAMPLES["pid"].code;
+
+      // ============================================
+      // MAP CONFIGURATION
+      // ============================================
+      const MAPS = {
+        novice: {
+          id: "novice",
+          name: "Novice Course",
+          url: "https://raw.githubusercontent.com/ron-grant/LFS/refs/heads/master/distribution/lineFollowerSim-15/examples/MecanumDemo/data/Novice_LF_course-Fall_2018_64DPI.jpg",
+          difficulty: "Easy",
+          startPosition: [27, 12, 0], // [x, y, heading]
+          courseLength: 305, // inches (approximate)
+          description:
+            "Simple oval track with gentle curves. Perfect for testing basic algorithms.",
+        },
+        // More maps can be added here
+      };
+
+      // ============================================
+      // MAP MANAGER CLASS
+      // ============================================
+      class MapManager {
+        constructor() {
+          this.maps = MAPS;
+          this.currentMap = null;
+        }
+
+        getMap(mapId) {
+          return this.maps[mapId];
+        }
+
+        async loadMap(mapId) {
+          const map = this.maps[mapId];
+          if (!map) {
+            showStatus("✗ Map not found: " + mapId, "error");
+            return false;
+          }
+
+          return new Promise((resolve, reject) => {
+            loadImage(
+              map.url,
+              (img) => {
+                lfs.loadCourse(img);
+                currentMapUrl = map.url;
+                this.currentMap = mapId;
+
+                // Set robot position
+                setRobotPosition(...map.startPosition);
+
+                // Update course length for scoring
+                if (scoreCalculator) {
+                  scoreCalculator.courseLength = map.courseLength;
+                }
+
+                showStatus("✓ Loaded: " + map.name, "success");
+                resolve(true);
+              },
+              (err) => {
+                showStatus("✗ Failed to load map: " + map.name, "error");
+                console.error(err);
+                reject(err);
+              },
+            );
+          });
+        }
+
+        populateMapSelector() {
+          const selector = document.getElementById("map-selector");
+          selector.innerHTML = "";
+
+          for (let id in this.maps) {
+            const map = this.maps[id];
+            const option = document.createElement("option");
+            option.value = id;
+            option.textContent = `${map.name} (${map.difficulty})`;
+            option.title = map.description;
+            selector.appendChild(option);
+          }
+        }
+      }
+
+      // ============================================
+      // ROBOT CLASS
+      // ============================================
+      class Robot {
+        constructor(x, y, heading) {
+          this.x = x;
+          this.y = y;
+          this.heading = heading;
+          this.xi = x;
+          this.yi = y;
+          this.headingi = heading;
+
+          this.speed = 0;
+          this.sidewaysSpeed = 0;
+          this.turnRate = 0;
+
+          this.targetSpeed = 0;
+          this.targetSidewaysSpeed = 0;
+          this.targetTurnRate = 0;
+
+          this.acclRate = 64.0;
+          this.declRate = 64.0;
+          this.turnAcc = 720.0;
+
+          this.distanceTraveled = 0;
+        }
+
+        setTargetSpeed(s) {
+          this.targetSpeed = s;
+        }
+
+        setTargetTurnRate(r) {
+          this.targetTurnRate = r;
+        }
+
+        driveUpdate(dt) {
+          // Update speed with acceleration/deceleration
+          if (this.speed !== this.targetSpeed) {
+            if (this.speed < this.targetSpeed) {
+              this.speed += this.acclRate * dt;
+              if (this.speed > this.targetSpeed) this.speed = this.targetSpeed;
+            } else {
+              this.speed -= this.declRate * dt;
+              if (this.speed < this.targetSpeed) this.speed = this.targetSpeed;
+            }
+          }
+
+          // Update turn rate with acceleration
+          if (this.turnRate !== this.targetTurnRate) {
+            if (this.turnRate < this.targetTurnRate) {
+              this.turnRate += this.turnAcc * dt;
+              if (this.turnRate > this.targetTurnRate)
+                this.turnRate = this.targetTurnRate;
+            } else {
+              this.turnRate -= this.turnAcc * dt;
+              if (this.turnRate < this.targetTurnRate)
+                this.turnRate = this.targetTurnRate;
+            }
+          }
+
+          // Calculate movement
+          let dist = this.speed * dt;
+          this.distanceTraveled += Math.abs(dist);
+
+          // Convert heading to radians and calculate position change
+          let headingRad = radians(this.heading);
+          let ca = Math.cos(headingRad);
+          let sa = Math.sin(headingRad);
+
+          this.x -= ca * dist;
+          this.y -= sa * dist;
+
+          // Update heading
+          this.heading += this.turnRate * dt;
+
+          // Keep heading in 0-360 range
+          if (this.heading >= 360) this.heading -= 360;
+          if (this.heading < 0) this.heading += 360;
+        }
+
+        reset() {
+          this.x = this.xi;
+          this.y = this.yi;
+          this.heading = this.headingi;
+          this.speed = 0;
+          this.sidewaysSpeed = 0;
+          this.turnRate = 0;
+          this.targetSpeed = 0;
+          this.targetSidewaysSpeed = 0;
+          this.targetTurnRate = 0;
+          this.distanceTraveled = 0;
+        }
+
+        hardStop() {
+          this.speed = 0;
+          this.turnRate = 0;
+          this.targetSpeed = 0;
+          this.targetTurnRate = 0;
+        }
+      }
+
+      // ============================================
+      // SPOT SENSOR CLASS
+      // ============================================
+      class SpotSensor {
+        constructor(xoff, yoff, w, h) {
+          this.xoff = xoff;
+          this.yoff = yoff;
+          this.spotWPix = w;
+          this.spotHPix = h;
+          this.intensity = 0;
+          this.color = [0, 255, 0];
+          this.name = "";
+        }
+
+        read() {
+          return this.intensity;
+        }
+
+        setColor(r, g, b) {
+          this.color = [r, g, b];
+        }
+
+        sampleFromImage(courseImage, robot, courseDPI) {
+          if (!courseImage) return 0;
+
+          let headingRad = radians(robot.heading);
+          let cosH = Math.cos(headingRad);
+          let sinH = Math.sin(headingRad);
+
+          let cx = robot.x * courseDPI;
+          let cy = robot.y * courseDPI;
+
+          let sx = this.xoff * cosH - this.yoff * sinH;
+          let sy = this.xoff * sinH + this.yoff * cosH;
+
+          let xCenter = cx - sx * courseDPI;
+          let yCenter = cy - sy * courseDPI;
+
+          let sum = 0;
+          let count = 0;
+
+          // courseImage.loadPixels();
+
+          for (let h = 0; h < this.spotHPix; h++) {
+            for (let w = 0; w < this.spotWPix; w++) {
+              let px = Math.floor(xCenter + w - this.spotWPix / 2);
+              let py = Math.floor(yCenter + h - this.spotHPix / 2);
+
+              if (
+                px >= 0 &&
+                px < courseImage.width &&
+                py >= 0 &&
+                py < courseImage.height
+              ) {
+                let idx = (py * courseImage.width + px) * 4;
+                let gray =
+                  (courseImage.pixels[idx] +
+                    courseImage.pixels[idx + 1] +
+                    courseImage.pixels[idx + 2]) /
+                  3;
+                sum += gray;
+                count++;
+              }
+            }
+          }
+
+          this.intensity = count > 0 ? sum / (count * 255.0) : 0;
+          return this.intensity;
+        }
+      }
+
+      // ============================================
+      // LINE SENSOR CLASS
+      // ============================================
+      class LineSensor extends SpotSensor {
+        constructor(xoff, yoff, w, h, numberOfSensors) {
+          super(xoff, yoff, w, h);
+          this.sensorCells =
+            numberOfSensors % 2 === 0 ? numberOfSensors + 1 : numberOfSensors;
+          this.sensorTable = new Array(this.sensorCells).fill(0);
+          this.colorTable = new Array(this.sensorCells).fill([0, 255, 0]);
+          this.arcRadius = 0;
+          this.rotationAngle = 0;
+        }
+
+        readArray() {
+          return this.sensorTable;
+        }
+
+        getColorArray() {
+          return this.colorTable;
+        }
+
+        sampleFromImage(courseImage, robot, courseDPI) {
+          if (!courseImage) return;
+
+          let halfWidth =
+            ((this.sensorCells / 2.0) * this.spotWPix) / courseDPI;
+          let a = radians(this.rotationAngle);
+          let sinA = Math.sin(a);
+          let cosA = Math.cos(a);
+
+          for (let i = 0; i < this.sensorCells; i++) {
+            let u = i / (this.sensorCells - 1);
+            let t = Math.PI * u;
+
+            let x = 0,
+              y = 0;
+
+            if (this.arcRadius !== 0) {
+              y = -(this.arcRadius * Math.cos(t));
+              x = this.arcRadius * Math.sin(t);
+            } else {
+              y = ((0.5 + i) * this.spotHPix) / courseDPI - halfWidth;
+            }
+
+            let spotX = this.xoff + x * cosA - y * sinA;
+            let spotY = this.yoff + x * sinA + y * cosA;
+
+            let tempSensor = new SpotSensor(
+              spotX,
+              spotY,
+              this.spotWPix,
+              this.spotHPix,
+            );
+            this.sensorTable[i] = tempSensor.sampleFromImage(
+              courseImage,
+              robot,
+              courseDPI,
+            );
+          }
+        }
+      }
+
+      // ============================================
+      // LFS MAIN CLASS
+      // ============================================
+      class LFS {
+        constructor() {
+          this.robot = new Robot(100, 100, 0);
+          this.courseImage = null;
+          this.courseDPI = 64;
+
+          this.spotSensors = [];
+          this.lineSensors = [];
+
+          this.controllerEnabled = false;
+          this.contestState = "idle"; // idle, run, stop, finished
+
+          this.maxSpeed = 25;
+          this.maxTurnRate = 720;
+          this.timeStep = 0.01667;
+
+          this.contestTime = 0;
+          this.crumbs = [];
+          this.crumbThreshold = 0.5;
+          this.lastCrumbX = 0;
+          this.lastCrumbY = 0;
+
+          // Viewports
+          this.robotVP = { x: 40, y: 40, w: 400, h: 400 };
+          this.courseVP = { x: 480, y: 40, w: 1200, h: 800 };
+          this.sensorVP = { x: 0, y: 0, w: 800, h: 800 };
+        }
+
+        createSpotSensor(xoff, yoff, w, h) {
+          let sensor = new SpotSensor(xoff, yoff, w, h);
+          this.spotSensors.push(sensor);
+          return sensor;
+        }
+
+        createLineSensor(xoff, yoff, w, h, numberOfSensors) {
+          let sensor = new LineSensor(xoff, yoff, w, h, numberOfSensors);
+          this.lineSensors.push(sensor);
+          return sensor;
+        }
+
+        loadCourse(img) {
+          this.courseImage = img;
+          this.courseImage.loadPixels();
+        }
+
+        updateSensors() {
+          for (let sensor of this.spotSensors) {
+            sensor.sampleFromImage(
+              this.courseImage,
+              this.robot,
+              this.courseDPI,
+            );
+          }
+          for (let sensor of this.lineSensors) {
+            sensor.sampleFromImage(
+              this.courseImage,
+              this.robot,
+              this.courseDPI,
+            );
+          }
+        }
+
+        driveUpdate(stepRequested) {
+          if (stepRequested || !this.controllerEnabled) {
+            this.robot.driveUpdate(this.timeStep);
+          }
+
+          if (this.controllerEnabled) {
+            this.addCrumb();
+          }
+
+          if (
+            stepRequested &&
+            this.controllerEnabled &&
+            this.contestState === "run"
+          ) {
+            this.contestTime += this.timeStep;
+          }
+        }
+
+        addCrumb() {
+          let dx = this.robot.x - this.lastCrumbX;
+          let dy = this.robot.y - this.lastCrumbY;
+          let dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist > this.crumbThreshold) {
+            this.crumbs.push({ x: this.robot.x, y: this.robot.y });
+            this.lastCrumbX = this.robot.x;
+            this.lastCrumbY = this.robot.y;
+          }
+        }
+
+        clearCrumbs() {
+          this.crumbs = [];
+        }
+
+        contestStart() {
+          this.contestState = "run";
+          this.controllerEnabled = true;
+          this.clearCrumbs();
+          this.contestTime = 0;
+          this.robot.distanceTraveled = 0;
+        }
+
+        contestStop() {
+          this.robot.hardStop();
+          this.controllerEnabled = false;
+          this.contestState = "stop";
+        }
+
+        contestFinish() {
+          if (this.contestState === "run") this.contestStop();
+          this.contestState = "finished";
+        }
+
+        contestEnd() {
+          this.contestState = "idle";
+        }
+
+        drawRobotView() {
+          if (!this.courseImage) return;
+
+          push();
+          translate(this.robotVP.x, this.robotVP.y);
+
+          let viewSize = 400;
+          let scale_ = viewSize / (this.sensorVP.w / 2);
+
+          push();
+          clip(() => {
+            rect(0, 0, this.robotVP.w, this.robotVP.h);
+          });
+          translate(this.robotVP.w / 2, this.robotVP.h / 2);
+          rotate(-radians(this.robot.heading - 90));
+          scale(scale_);
+
+          let sx = this.robot.x * this.courseDPI;
+          let sy = this.robot.y * this.courseDPI;
+
+          imageMode(CENTER);
+          image(
+            this.courseImage,
+            -sx + this.courseImage.width / 2,
+            -sy + this.courseImage.height / 2,
+          );
+          pop();
+
+          // Draw crosshair
+          stroke(255, 0, 0);
+          strokeWeight(2);
+          line(
+            this.robotVP.w / 2 - 20,
+            this.robotVP.h / 2,
+            this.robotVP.w / 2 + 20,
+            this.robotVP.h / 2,
+          );
+          line(
+            this.robotVP.w / 2,
+            this.robotVP.h / 2 - 20,
+            this.robotVP.w / 2,
+            this.robotVP.h / 2 + 20,
+          );
+
+          pop();
+        }
+
+        drawCourseView() {
+          if (!this.courseImage) return;
+
+          push();
+
+          let scaleX = this.courseVP.w / this.courseImage.width;
+          let scaleY = this.courseVP.h / this.courseImage.height;
+          let _scale = Math.min(scaleX, scaleY);
+
+          translate(this.courseVP.x, this.courseVP.y);
+
+          push();
+          scale(_scale);
+          image(this.courseImage, 0, 0);
+          pop();
+
+          // Draw robot pointer
+          let rx = this.robot.x * this.courseDPI * _scale;
+          let ry = this.robot.y * this.courseDPI * _scale;
+
+          push();
+          translate(rx, ry);
+          rotate(radians(this.robot.heading));
+
+          fill(50, 50, 255);
+          stroke(50, 50, 255);
+          strokeWeight(12);
+          line(0, 0, -60, 0);
+          circle(0, 0, 10);
+          pop();
+
+          // Draw crumbs
+          stroke(0, 255, 0);
+          strokeWeight(3);
+          for (let crumb of this.crumbs) {
+            let cx = crumb.x * this.courseDPI * _scale;
+            let cy = crumb.y * this.courseDPI * _scale;
+            point(cx, cy);
+          }
+
+          // Draw start marker
+          if (this.crumbs.length > 0) {
+            fill(20, 200, 20);
+            noStroke();
+            textSize(20);
+            let c = this.crumbs[0];
+            text(
+              "(S)",
+              c.x * this.courseDPI * _scale,
+              c.y * this.courseDPI * _scale,
+            );
+          }
+
+          // Draw finish marker
+          if (this.contestState === "finished" && this.crumbs.length > 0) {
+            fill(200, 20, 20);
+            noStroke();
+            textSize(20);
+            let c = this.crumbs[this.crumbs.length - 1];
+            text(
+              "(F)",
+              c.x * this.courseDPI * _scale,
+              c.y * this.courseDPI * _scale,
+            );
+          }
+
+          pop();
+        }
+
+        drawSensors() {
+          if (!this.courseImage) return;
+
+          push();
+          translate(
+            this.robotVP.x + this.robotVP.w / 2,
+            this.robotVP.y + this.robotVP.h / 2,
+          );
+
+          let _scale = (this.courseDPI * this.robotVP.w) / this.sensorVP.w;
+
+          // Draw spot sensors
+          for (let sensor of this.spotSensors) {
+            let x = sensor.yoff * _scale;
+            let y = -sensor.xoff * _scale;
+
+            fill(sensor.color[0], sensor.color[1], sensor.color[2]);
+            rectMode(CENTER);
+            rect(x, y, sensor.spotWPix, sensor.spotHPix);
+          }
+
+          // Draw line sensors
+          for (let sensor of this.lineSensors) {
+            let colorArray = sensor.getColorArray();
+            let halfWidth =
+              ((sensor.sensorCells / 2.0) * sensor.spotWPix) / this.courseDPI;
+
+            for (let i = 0; i < sensor.sensorCells; i++) {
+              let y =
+                ((0.5 + i) * sensor.spotHPix) / this.courseDPI - halfWidth;
+              let x = sensor.xoff;
+              let spotY = sensor.yoff + y;
+
+              let sx = spotY * _scale;
+              let sy = -x * _scale;
+
+              let c = colorArray[i];
+              fill(c[0], c[1], c[2]);
+              rectMode(CENTER);
+              rect(sx, sy, sensor.spotWPix, sensor.spotHPix);
+            }
+          }
+
+          pop();
+        }
+      }
+
+      // ============================================
+      // SCORE CALCULATOR CLASS
+      // ============================================
+      class ScoreCalculator {
+        constructor() {
+          this.metrics = {
+            time: 0,
+            accuracy: 0,
+            efficiency: 0,
+            completion: 0,
+          };
+
+          this.errorHistory = [];
+          this.speedHistory = [];
+          this.startTime = 0;
+          this.courseLength = 200; // Default course length in inches
+        }
+
+        reset() {
+          this.metrics = { time: 0, accuracy: 0, efficiency: 0, completion: 0 };
+          this.errorHistory = [];
+          this.speedHistory = [];
+          this.startTime = Date.now();
+        }
+
+        recordFrame(robot, sensors, dt) {
+          // Calculate centroid error
+          const error = this.calculateCentroidError(sensors);
+          this.errorHistory.push(error);
+
+          // Track speed
+          this.speedHistory.push(robot.speed);
+
+          // Update metrics
+          this.updateMetrics(robot, error, dt);
+        }
+
+        calculateCentroidError(sensors) {
+          let lineSum = 0;
+          let positionSum = 0;
+          const n = sensors.length;
+
+          for (let i = 0; i < n; i++) {
+            const lineValue = 1.0 - sensors[i]; // Invert: 0=white, 1=black
+            lineSum += lineValue;
+            positionSum += lineValue * (i - (n - 1) / 2);
+          }
+
+          // Return normalized error (0 if no line detected)
+          return lineSum > 0.1 ? Math.abs(positionSum / lineSum) : 0;
+        }
+
+        updateMetrics(robot, error, dt) {
+          const elapsedTime = (Date.now() - this.startTime) / 1000; // seconds
+
+          // Time score: 100 / (1 + time/10)
+          // Faster is better, but diminishing returns
+          this.metrics.time = 100 / (1 + elapsedTime / 10);
+
+          // Accuracy: based on mean absolute error
+          // Lower error = higher score
+          if (this.errorHistory.length > 0) {
+            const meanError =
+              this.errorHistory.reduce((a, b) => a + b, 0) /
+              this.errorHistory.length;
+            this.metrics.accuracy =
+              100 * Math.exp(-0.5 * Math.pow(meanError / 2, 2));
+          }
+
+          // Efficiency: speed consistency (lower variance = higher score)
+          if (this.speedHistory.length > 10) {
+            const speedVariance = this.calculateVariance(this.speedHistory);
+            this.metrics.efficiency = 100 / (1 + speedVariance / 10);
+          }
+
+          // Completion: distance traveled / total course
+          this.metrics.completion = Math.min(
+            100,
+            (robot.distanceTraveled / this.courseLength) * 100,
+          );
+        }
+
+        calculateVariance(arr) {
+          if (arr.length === 0) return 0;
+          const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+          const squaredDiffs = arr.map((x) => Math.pow(x - mean, 2));
+          return squaredDiffs.reduce((a, b) => a + b, 0) / arr.length;
+        }
+
+        getTotalScore() {
+          // Weighted average: accuracy matters most
+          return (
+            this.metrics.time * 0.25 +
+            this.metrics.accuracy * 0.4 +
+            this.metrics.efficiency * 0.2 +
+            this.metrics.completion * 0.15
+          );
+        }
+
+        getDetailedScores() {
+          const meanError =
+            this.errorHistory.length > 0
+              ? this.errorHistory.reduce((a, b) => a + b, 0) /
+                this.errorHistory.length
+              : 0;
+
+          return {
+            total: this.getTotalScore(),
+            ...this.metrics,
+            meanError: meanError,
+          };
+        }
+      }
+
+      // ============================================
+      // CONTROLLER API CLASS
+      // ============================================
+      class ControllerAPI {
+        constructor(lfs, lineSensor) {
+          this.lfs = lfs;
+          this.lineSensor = lineSensor;
+        }
+
+        getSensorReadings() {
+          return this.lineSensor.readArray();
+        }
+
+        setSpeed(inchesPerSec) {
+          this.lfs.robot.setTargetSpeed(inchesPerSec);
+        }
+
+        setTurnRate(degreesPerSec) {
+          this.lfs.robot.setTargetTurnRate(degreesPerSec);
+        }
+
+        getState() {
+          return {
+            x: this.lfs.robot.x,
+            y: this.lfs.robot.y,
+            heading: this.lfs.robot.heading,
+            speed: this.lfs.robot.speed,
+            turnRate: this.lfs.robot.turnRate,
+            distanceTraveled: this.lfs.robot.distanceTraveled,
+          };
+        }
+
+        getTime() {
+          return this.lfs.contestTime;
+        }
+      }
+
+      // ============================================
+      // PROJECT MANAGER CLASS
+      // ============================================
+      class ProjectManager {
+        constructor() {
+          this.storageKey = "lfs-projects";
+          this.currentProject = null;
+        }
+
+        saveProject(name) {
+          if (!name || name.trim() === "") {
+            alert("Please enter a project name");
+            return false;
+          }
+
+          const projects = this.loadProjects();
+          const project = {
+            name: name,
+            code: window.monacoEditor.getValue(),
+            config: {
+              mapId: mapManager.currentMap || "novice",
+              robotPos: [lfs.robot.x, lfs.robot.y, lfs.robot.heading],
+            },
+            timestamp: Date.now(),
+          };
+
+          projects[name] = project;
+          localStorage.setItem(this.storageKey, JSON.stringify(projects));
+          this.currentProject = name;
+
+          this.updateProjectList();
+          showStatus("✓ Project saved: " + name, "success");
+          return true;
+        }
+
+        loadProject(name) {
+          const projects = this.loadProjects();
+          const project = projects[name];
+
+          if (project) {
+            window.monacoEditor.setValue(project.code);
+
+            // Load map (handle legacy projects with mapUrl)
+            if (project.config.mapId) {
+              mapManager.loadMap(project.config.mapId);
+            } else if (project.config.mapUrl) {
+              // Legacy support
+              loadMapFromURL(project.config.mapUrl);
+            }
+
+            setRobotPosition(...project.config.robotPos);
+            this.currentProject = name;
+            showStatus("✓ Project loaded: " + name, "success");
+            return true;
+          }
+          return false;
+        }
+
+        deleteProject(name) {
+          if (!name) return false;
+
+          if (confirm('Delete project "' + name + '"?')) {
+            const projects = this.loadProjects();
+            delete projects[name];
+            localStorage.setItem(this.storageKey, JSON.stringify(projects));
+            this.updateProjectList();
+
+            if (this.currentProject === name) {
+              this.currentProject = null;
+            }
+
+            showStatus("✓ Project deleted: " + name, "success");
+            return true;
+          }
+          return false;
+        }
+
+        loadProjects() {
+          const stored = localStorage.getItem(this.storageKey);
+          return stored ? JSON.parse(stored) : {};
+        }
+
+        updateProjectList() {
+          const projects = this.loadProjects();
+          const select = document.getElementById("project-list");
+          select.innerHTML = '<option value="">Load Project...</option>';
+
+          Object.keys(projects)
+            .sort()
+            .forEach((name) => {
+              const option = document.createElement("option");
+              option.value = name;
+              option.textContent = name;
+              select.appendChild(option);
+            });
+        }
+      }
+
+      // ============================================
+      // MONACO EDITOR SETUP
+      // ============================================
+      let monacoEditor = null;
+      let compileTimeout = null;
+      const COMPILE_DELAY = 500; // ms
+
+      function loadMonacoLoader(callback) {
+        // Check if loader is already loaded
+        if (typeof require !== "undefined") {
+          callback();
+          return;
+        }
+
+        // Create script element to load Monaco's AMD loader
+        const script = document.createElement("script");
+        script.src =
+          "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.53.0/min/vs/loader.min.js";
+        script.onload = callback;
+        script.onerror = () => {
+          console.error("Failed to load Monaco loader script");
+          showStatus("✗ Failed to load editor", "error");
+        };
+        document.head.appendChild(script);
+      }
+
+      function initMonaco() {
+        loadMonacoLoader(() => {
+          require.config({
+            paths: {
+              vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.53.0/min/vs",
+            },
+          });
+
+          require(["vs/editor/editor.main"], function () {
+            // Add type definitions for autocomplete
+            monaco.languages.typescript.javascriptDefaults.addExtraLib(
+              TYPE_DEFINITIONS,
+              "ts:filename/lfs-api.d.ts",
+            );
+
+            // Configure JavaScript defaults
+            monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions(
+              {
+                noSemanticValidation: false,
+                noSyntaxValidation: false,
+              },
+            );
+
+            monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
+              target: monaco.languages.typescript.ScriptTarget.ES2020,
+              allowNonTsExtensions: true,
+            });
+
+            // Create editor
+            monacoEditor = monaco.editor.create(
+              document.getElementById("editor"),
+              {
+                value: DEFAULT_CONTROLLER,
+                language: "javascript",
+                theme: "vs-dark",
+                automaticLayout: true,
+                fontSize: 13,
+                minimap: { enabled: true },
+                scrollBeyondLastLine: false,
+                lineNumbers: "on",
+                renderWhitespace: "selection",
+                tabSize: 4,
+                insertSpaces: true,
+              },
+            );
+
+            window.monacoEditor = monacoEditor;
+
+            // Setup auto-compile on change
+            monacoEditor.onDidChangeModelContent(() => {
+              clearTimeout(compileTimeout);
+              compileTimeout = setTimeout(() => {
+                compileUserCode(monacoEditor.getValue());
+              }, COMPILE_DELAY);
+            });
+
+            // Keyboard shortcuts
+            monacoEditor.addCommand(
+              monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+              () => {
+                runCode();
+              },
+            );
+
+            // Initial compilation
+            compileUserCode(monacoEditor.getValue());
+
+            // Try loading from URL
+            if (!loadFromURL()) {
+              // Try loading last project
+              const lastProject = localStorage.getItem("lfs-last-project");
+              if (lastProject) {
+                projectManager.loadProject(lastProject);
+              }
+            }
+          });
+        });
+      }
+
+      // ============================================
+      // CODE COMPILATION & EXECUTION
+      // ============================================
+      let userController = null;
+
+      function compileUserCode(code) {
+        try {
+          // Clear previous markers
+          if (monacoEditor) {
+            monaco.editor.setModelMarkers(monacoEditor.getModel(), "owner", []);
+          }
+
+          // Validate syntax
+          new Function(code);
+
+          // Create controller instance
+          const ControllerClass = new Function(
+            "ControllerAPI",
+            `${code}\nreturn Controller;`,
+          )(ControllerAPI);
+
+          // Instantiate
+          userController = new ControllerClass();
+
+          // Validate required methods
+          if (typeof userController.update !== "function") {
+            throw new Error("Controller must have an update() method");
+          }
+
+          // Call init if it exists
+          if (typeof userController.init === "function") {
+            userController.init(controllerAPI);
+          }
+
+          showStatus("✓ Compiled successfully", "success");
+          return true;
+        } catch (error) {
+          showCompilationError(error);
+          userController = null;
+          return false;
+        }
+      }
+
+      function showCompilationError(error) {
+        showStatus("✗ Compilation error: " + error.message, "error");
+
+        // Try to extract line number from error
+        const match = error.stack && error.stack.match(/:(\d+):/);
+        if (match && monacoEditor) {
+          const lineNumber = parseInt(match[1]);
+          monaco.editor.setModelMarkers(monacoEditor.getModel(), "owner", [
+            {
+              startLineNumber: lineNumber,
+              startColumn: 1,
+              endLineNumber: lineNumber,
+              endColumn: 1000,
+              message: error.message,
+              severity: monaco.MarkerSeverity.Error,
+            },
+          ]);
+        }
+
+        console.error("Compilation error:", error);
+      }
+
+      function showRuntimeError(error) {
+        showStatus("✗ Runtime error: " + error.message, "error");
+        console.error("Runtime error:", error);
+        lfs.contestStop();
+      }
+
+      function showStatus(message, type = "info") {
+        const statusEl = document.getElementById("compile-status");
+        statusEl.textContent = message;
+        statusEl.className = "status-" + type;
+      }
+
+      function runCode() {
+        if (compileUserCode(monacoEditor.getValue())) {
+          resetRobot();
+          setTimeout(() => {
+            lfs.contestStart();
+            resetController();
+            scoreCalculator.reset();
+          }, 100);
+        }
+      }
+
+      // ============================================
+      // URL SHARING
+      // ============================================
+      function shareToURL() {
+        try {
+          const state = {
+            code: monacoEditor.getValue(),
+            config: {
+              mapId: mapManager.currentMap || "novice",
+              robotPos: [lfs.robot.x, lfs.robot.y, lfs.robot.heading],
+            },
+          };
+
+          const json = JSON.stringify(state);
+          const compressed = LZString.compressToBase64(json);
+
+          const url = new URL(window.location.href.split("#")[0]);
+          url.hash = compressed;
+
+          navigator.clipboard
+            .writeText(url.href)
+            .then(() => {
+              showStatus("✓ URL copied to clipboard", "success");
+            })
+            .catch(() => {
+              // Fallback: show URL in prompt
+              prompt("Copy this URL:", url.href);
+            });
+        } catch (error) {
+          showStatus("✗ Failed to create share URL", "error");
+          console.error(error);
+        }
+      }
+
+      function loadFromURL() {
+        const hash = window.location.hash.slice(1);
+        if (!hash) return false;
+
+        try {
+          const json = LZString.decompressFromBase64(hash);
+          const state = JSON.parse(json);
+
+          monacoEditor.setValue(state.code);
+
+          // Load map (handle legacy URLs with mapUrl)
+          if (state.config.mapId) {
+            mapManager.loadMap(state.config.mapId);
+          } else if (state.config.mapUrl) {
+            // Legacy support
+            loadMapFromURL(state.config.mapUrl);
+          }
+
+          setRobotPosition(...state.config.robotPos);
+
+          showStatus("✓ Loaded from URL", "success");
+          return true;
+        } catch (error) {
+          console.error("Failed to load from URL:", error);
+          showStatus("✗ Failed to load from URL", "error");
+          return false;
+        }
+      }
+
+      // ============================================
+      // P5.JS SKETCH
+      // ============================================
+      /** @type LFS */
+      let lfs;
+      /** @type LineSensor */
+      let lineSensor;
+      /** @type ControllerAPI */
+      let controllerAPI;
+      /** @type ProjectManager */
+      let projectManager;
+      /** @type ScoreCalculator */
+      let scoreCalculator;
+      /** @type MapManager */
+      let mapManager;
+
+      // Global state
+      let currentMapUrl =
+        "https://raw.githubusercontent.com/ron-grant/LFS/refs/heads/master/distribution/lineFollowerSim-15/examples/MecanumDemo/data/Novice_LF_course-Fall_2018_64DPI.jpg";
+
+      function setup() {
+        let canvas = createCanvas(windowWidth - 40, windowHeight);
+        canvas.parent(document.getElementById("canvas-panel"));
+        canvas.style("display", "block");
+        canvas.mousePressed(canvasClicked);
+
+        lfs = new LFS();
+        lfs.robotVP = { x: 20, y: 20, w: 300, h: 300 };
+        lfs.courseVP = {
+          x: 340,
+          y: 20,
+          w: windowWidth - 400,
+          h: windowHeight - 40,
+        };
+
+        // Create default sensors - 9 element line sensor, 2 inches forward of center
+        lineSensor = lfs.createLineSensor(2, 0, 5, 5, 9);
+
+        // Create API wrapper
+        controllerAPI = new ControllerAPI(lfs, lineSensor);
+
+        // Initialize project manager
+        projectManager = new ProjectManager();
+        projectManager.updateProjectList();
+
+        // Initialize score calculator
+        scoreCalculator = new ScoreCalculator();
+
+        // Initialize map manager
+        mapManager = new MapManager();
+        mapManager.populateMapSelector();
+
+        // Populate example selector
+        populateExampleSelector();
+
+        // Setup resizer
+        setupResizer();
+
+        frameRate(60);
+
+        // Load default map
+        mapManager.loadMap("novice");
+      }
+
+      // Initialize Monaco after page loads
+      window.addEventListener("load", () => {
+        initMonaco();
+      });
+
+      function windowResized() {
+        resizeCanvas(windowWidth - 40, windowHeight);
+        lfs.courseVP.w = windowWidth - 400;
+        lfs.courseVP.h = windowHeight - 40;
+      }
+
+      function draw() {
+        background(20);
+
+        if (!lfs || !lfs.courseImage) return;
+
+        // Update sensors
+        lfs.updateSensors();
+
+        // User controller update
+        if (lfs.controllerEnabled && userController) {
+          try {
+            const sensors = controllerAPI.getSensorReadings();
+            userController.update(controllerAPI, sensors);
+
+            // Record frame for scoring (only during contest run)
+            if (lfs.contestState === "run") {
+              scoreCalculator.recordFrame(lfs.robot, sensors, lfs.timeStep);
+            }
+
+            // Visual feedback: color sensors based on reading
+            const colors = lineSensor.getColorArray();
+            for (let i = 0; i < sensors.length; i++) {
+              if (sensors[i] < 0.5) {
+                colors[i] = [255, 0, 0]; // Line detected
+              } else if (sensors[i] < 0.7) {
+                colors[i] = [255, 255, 0]; // Gray area
+              } else {
+                colors[i] = [0, 255, 0]; // Background
+              }
+            }
+          } catch (error) {
+            showRuntimeError(error);
+          }
+        }
+
+        // Drive update
+        lfs.driveUpdate(lfs.controllerEnabled);
+
+        // Draw views
+        lfs.drawRobotView();
+        lfs.drawCourseView();
+        lfs.drawSensors();
+
+        // Draw viewport borders
+        noFill();
+        stroke(0, 255, 0);
+        strokeWeight(2);
+        rect(lfs.robotVP.x, lfs.robotVP.y, lfs.robotVP.w, lfs.robotVP.h);
+        rect(lfs.courseVP.x, lfs.courseVP.y, lfs.courseVP.w, lfs.courseVP.h);
+
+        // Update UI
+        updateUI();
+      }
+
+      /**
+       * Reset controller state - reinitialize user controller
+       */
+      function resetController() {
+        if (userController && typeof userController.init === "function") {
+          try {
+            userController.init(controllerAPI);
+          } catch (error) {
+            console.error("Error in controller init:", error);
+          }
+        }
+      }
+
+      function keyPressed() {
+        // Check if Monaco editor is focused - if so, don't handle shortcuts
+        if (monacoEditor && monacoEditor.hasTextFocus()) {
+          return true; // Let Monaco handle it
+        }
+
+        // Space bar to stop (only when canvas focused)
+        if (key === " ") {
+          lfs.contestStop();
+          return false; // Prevent default
+        }
+
+        // R to run
+        if (key === "r" || key === "R") {
+          runCode();
+          return false;
+        }
+
+        // E to clear crumbs
+        if (key === "e" || key === "E") {
+          lfs.clearCrumbs();
+          return false;
+        }
+      }
+
+      function canvasClicked() {
+        // Check if mouse is in course viewport
+        if (
+          mouseX >= lfs.courseVP.x &&
+          mouseX <= lfs.courseVP.x + lfs.courseVP.w &&
+          mouseY >= lfs.courseVP.y &&
+          mouseY <= lfs.courseVP.y + lfs.courseVP.h &&
+          lfs.courseImage &&
+          lfs.contestState === "idle"
+        ) {
+          let scaleX = lfs.courseVP.w / lfs.courseImage.width;
+          let scaleY = lfs.courseVP.h / lfs.courseImage.height;
+          let _scale = Math.min(scaleX, scaleY);
+
+          let wx = (mouseX - lfs.courseVP.x) / (lfs.courseDPI * _scale);
+          let wy = (mouseY - lfs.courseVP.y) / (lfs.courseDPI * _scale);
+
+          lfs.robot.x = wx;
+          lfs.robot.y = wy;
+          lfs.robot.xi = wx;
+          lfs.robot.yi = wy;
+          lfs.robot.hardStop();
+          console.log(lfs);
+        }
+      }
+
+      // ============================================
+      // UI CONTROL FUNCTIONS
+      // ============================================
+      function loadMapFromURL(url) {
+        if (!url) return;
+
+        loadImage(
+          url,
+          (img) => {
+            lfs.loadCourse(img);
+            currentMapUrl = url;
+          },
+          (err) => {
+            showStatus("✗ Failed to load map", "error");
+            console.error(err);
+          },
+        );
+      }
+
+      function loadSelectedMap() {
+        const mapId = document.getElementById("map-selector").value;
+        if (mapId && mapManager) {
+          mapManager.loadMap(mapId);
+        }
+      }
+
+      function loadSelectedExample() {
+        const exampleId = document.getElementById("example-selector").value;
+        if (exampleId && monacoEditor && EXAMPLES[exampleId]) {
+          const example = EXAMPLES[exampleId];
+          monacoEditor.setValue(example.code);
+          showStatus("✓ Loaded: " + example.name, "success");
+
+          // Reset selector
+          document.getElementById("example-selector").value = "";
+        }
+      }
+
+      function populateExampleSelector() {
+        const selector = document.getElementById("example-selector");
+        selector.innerHTML = '<option value="">Load Example...</option>';
+
+        for (let id in EXAMPLES) {
+          const example = EXAMPLES[id];
+          const option = document.createElement("option");
+          option.value = id;
+          option.textContent = example.name;
+          option.title = example.description;
+          selector.appendChild(option);
+        }
+      }
+
+      function setRobotPosition(x, y, heading) {
+        lfs.robot.x = x;
+        lfs.robot.y = y;
+        lfs.robot.heading = heading;
+        lfs.robot.xi = x;
+        lfs.robot.yi = y;
+        lfs.robot.headingi = heading;
+        lfs.robot.hardStop();
+      }
+
+      function resetRobot() {
+        lfs.robot.reset();
+        lfs.clearCrumbs();
+        lfs.contestEnd();
+        resetController();
+      }
+
+      function togglePanel() {
+        const panel = document.getElementById("controls-panel");
+        const toggle = document.getElementById("panel-toggle");
+        panel.classList.toggle("collapsed");
+        toggle.textContent = panel.classList.contains("collapsed") ? "+" : "−";
+      }
+
+      function saveProject() {
+        const name = document.getElementById("project-name").value;
+        if (projectManager.saveProject(name)) {
+          document.getElementById("project-name").value = "";
+          localStorage.setItem("lfs-last-project", name);
+        }
+      }
+
+      function loadSelectedProject() {
+        const select = document.getElementById("project-list");
+        const name = select.value;
+        if (name) {
+          projectManager.loadProject(name);
+          localStorage.setItem("lfs-last-project", name);
+          select.value = "";
+        }
+      }
+
+      function deleteCurrentProject() {
+        const select = document.getElementById("project-list");
+        const name = select.value || projectManager.currentProject;
+        if (name) {
+          projectManager.deleteProject(name);
+          select.value = "";
+        }
+      }
+
+      function setupResizer() {
+        const resizer = document.getElementById("resizer");
+        const editorPanel = document.getElementById("editor-panel");
+        const canvasPanel = document.getElementById("canvas-panel");
+
+        let isResizing = false;
+
+        resizer.addEventListener("mousedown", (e) => {
+          isResizing = true;
+          document.body.style.cursor = "col-resize";
+          document.body.style.userSelect = "none";
+        });
+
+        document.addEventListener("mousemove", (e) => {
+          if (!isResizing) return;
+
+          const totalWidth = editorPanel.offsetWidth + canvasPanel.offsetWidth;
+          const newEditorWidth = e.clientX;
+
+          if (newEditorWidth > 300 && newEditorWidth < totalWidth - 400) {
+            const editorFlex = newEditorWidth;
+            const canvasFlex = totalWidth - newEditorWidth;
+
+            editorPanel.style.flex = `0 0 ${editorFlex}px`;
+            canvasPanel.style.flex = `0 0 ${canvasFlex}px`;
+          }
+        });
+
+        document.addEventListener("mouseup", () => {
+          isResizing = false;
+          document.body.style.cursor = "";
+          document.body.style.userSelect = "";
+        });
+      }
+
+      function updateUI() {
+        if (!lfs) return;
+
+        // Format time
+        let totalMs = Math.floor(lfs.contestTime * 1000);
+        let ms = totalMs % 1000;
+        let totalSec = Math.floor(totalMs / 1000);
+        let sec = totalSec % 60;
+        let min = Math.floor(totalSec / 60);
+
+        const timeEl = document.getElementById("time");
+        if (timeEl) {
+          timeEl.textContent =
+            String(min).padStart(2, "0") +
+            ":" +
+            String(sec).padStart(2, "0") +
+            "." +
+            String(ms).padStart(3, "0");
+        }
+
+        const distEl = document.getElementById("distance");
+        if (distEl) {
+          distEl.textContent = lfs.robot.distanceTraveled.toFixed(1) + '"';
+        }
+
+        const fpsEl = document.getElementById("fps");
+        if (fpsEl) {
+          fpsEl.textContent = Math.round(frameRate()) + " FPS";
+        }
+
+        // Update scores
+        if (scoreCalculator) {
+          const scores = scoreCalculator.getDetailedScores();
+
+          const totalEl = document.getElementById("score-total");
+          if (totalEl) totalEl.textContent = scores.total.toFixed(1);
+
+          const timeScoreEl = document.getElementById("score-time");
+          if (timeScoreEl) timeScoreEl.textContent = scores.time.toFixed(1);
+
+          const accuracyEl = document.getElementById("score-accuracy");
+          if (accuracyEl) accuracyEl.textContent = scores.accuracy.toFixed(1);
+
+          const efficiencyEl = document.getElementById("score-efficiency");
+          if (efficiencyEl)
+            efficiencyEl.textContent = scores.efficiency.toFixed(1);
+
+          const completionEl = document.getElementById("score-completion");
+          if (completionEl)
+            completionEl.textContent = scores.completion.toFixed(1) + "%";
+
+          const errorEl = document.getElementById("score-error");
+          if (errorEl) errorEl.textContent = scores.meanError.toFixed(2);
+        }
+      }
+    </script>
+  </body>
+</html>
