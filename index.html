@@ -12,68 +12,39 @@
     <div class="split-pane">
       <div id="editor-panel">
         <div id="editor-toolbar">
-          <div class="toolbar-group">
-            <button
-              onclick="runCode(event)"
-              title="Compile and run (Ctrl+Enter)"
-            >
-              ▶ Run
-            </button>
-            <button onclick="shareToURL()" title="Copy shareable URL">
-              🔗 Share
-            </button>
-          </div>
+          <!-- Primary actions -->
+          <button
+            onclick="runCode(event)"
+            class="btn-primary"
+            title="Compile and run (Ctrl+Enter)"
+          >
+            ▶ Run
+          </button>
+          <button onclick="shareToURL()" class="btn-icon" title="Copy shareable URL">
+            🔗
+          </button>
 
           <div class="toolbar-separator"></div>
 
-          <div class="toolbar-group">
-            <span class="toolbar-label">Map:</span>
-            <select id="map-selector" onchange="loadSelectedMap()">
-              <option value="novice">Novice Course</option>
-            </select>
-            <button onclick="openCustomMapModal()" title="Add custom map">
-              +
-            </button>
-          </div>
+          <!-- Map selector -->
+          <select id="map-selector" onchange="loadSelectedMap()" title="Select course map">
+            <option value="novice">Novice Course</option>
+          </select>
+          <button onclick="openCustomMapModal()" class="btn-icon" title="Add custom map">+</button>
 
           <div class="toolbar-separator"></div>
 
-          <div class="toolbar-group">
-            <span class="toolbar-label">Example:</span>
-            <select id="example-selector" onchange="loadSelectedExample()">
-              <option value="">Load Example...</option>
-            </select>
-          </div>
+          <!-- Example selector -->
+          <select id="example-selector" onchange="loadSelectedExample()" title="Load example controller">
+            <option value="">Load Example...</option>
+          </select>
 
           <div class="toolbar-separator"></div>
 
-          <div class="toolbar-group">
-            <input
-              type="text"
-              id="project-name"
-              placeholder="Project name..."
-              title="Enter project name"
-            />
-            <button
-              onclick="saveProject()"
-              title="Save current code as project"
-            >
-              💾
-            </button>
-            <select
-              id="project-list"
-              onchange="loadSelectedProject()"
-              title="Load saved project"
-            >
-              <option value="">Load Project...</option>
-            </select>
-            <button
-              onclick="deleteCurrentProject()"
-              title="Delete selected project"
-            >
-              🗑
-            </button>
-          </div>
+          <!-- Projects -->
+          <button onclick="openProjectModal()" title="Manage projects">
+            Projects
+          </button>
         </div>
         <div id="editor"></div>
         <div id="editor-status">
@@ -123,6 +94,12 @@
               <span id="time">00:00.000</span>
               <span id="distance">0.0"</span>
               <span id="fps">60 FPS</span>
+            </div>
+
+            <!-- Robot state indicator -->
+            <div id="robot-state" class="state-indicator">
+              <span id="state-text">Ready</span>
+              <span id="state-icon" class="state-ok">●</span>
             </div>
 
             <!-- Live charts -->
@@ -240,6 +217,39 @@
         <div class="modal-footer">
           <button onclick="closeCustomMapModal()">Cancel</button>
           <button onclick="saveCustomMap()">Add Map</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Projects Modal -->
+    <div id="projects-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">📁 Manage Projects</div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Save Current Code:</label>
+            <div class="form-row">
+              <input
+                type="text"
+                id="project-name-modal"
+                placeholder="Enter project name..."
+                style="flex: 1;"
+              />
+              <button onclick="saveProjectFromModal()">💾 Save</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Saved Projects:</label>
+            <select id="project-list-modal" size="8" style="width: 100%;">
+              <option value="">No saved projects</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button onclick="deleteProjectFromModal()">🗑 Delete</button>
+          <button onclick="loadProjectFromModal()">Load</button>
+          <button onclick="closeProjectModal()">Close</button>
         </div>
       </div>
     </div>

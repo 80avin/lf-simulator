@@ -141,15 +141,6 @@ function initMonaco() {
 
       // Initial compilation
       compileUserCode(monacoEditor.getValue());
-
-      // Try loading from URL
-      if (!loadFromURL()) {
-        // Try loading last project
-        const lastProject = localStorage.getItem("lfs-last-project");
-        if (lastProject) {
-          projectManager.loadProject(lastProject, monacoEditor, mapManager, setRobotPosition, showStatus);
-        }
-      }
     });
   });
 }
@@ -365,7 +356,6 @@ window.setup = function() {
 
   // Initialize project manager
   projectManager = new ProjectManager();
-  projectManager.updateProjectList();
 
   // Initialize score calculator
   scoreCalculator = new ScoreCalculator();
@@ -390,8 +380,19 @@ window.setup = function() {
   // Load default map
   mapManager.loadMap("novice", lfs, scoreCalculator, setRobotPosition, showStatus);
 
-  // NEW: Set initial position for completion tracking
+  // Set initial position for completion tracking
   scoreCalculator.setStartPosition(lfs.robot.xi, lfs.robot.yi);
+
+  // Try loading from URL or last project (after all managers are initialized)
+  setTimeout(() => {
+    if (!loadFromURL()) {
+      // Try loading last project
+      const lastProject = localStorage.getItem("lfs-last-project");
+      if (lastProject && monacoEditor) {
+        projectManager.loadProject(lastProject, monacoEditor, mapManager, lfs, scoreCalculator, setRobotPosition, showStatus);
+      }
+    }
+  }, 100); // Small delay to ensure Monaco is fully ready
 };
 
 // Initialize Monaco after page loads
@@ -464,7 +465,7 @@ window.draw = function() {
       // Calculate error for chart
       const sensors = controllerAPI.getSensorReadings();
       const error = scoreCalculator.calculateCentroidError(sensors);
-      chartBuffers.error.push(error + sensors.length/2);
+      chartBuffers.error.push(error);
     }
 
     physicsAccumulator -= PHYSICS_DT;
@@ -475,9 +476,31 @@ window.draw = function() {
   lfs.drawCourseView();
   lfs.drawSensors();
 
-  // Draw viewport borders
+  // Out-of-bounds visual overlay
+  if (lfs.robot.isOutOfBounds(lfs.courseImage, lfs.courseDPI)) {
+    push();
+    translate(lfs.courseVP.x, lfs.courseVP.y);
+
+    // Semi-transparent red overlay
+    fill(255, 0, 0, 30);
+    noStroke();
+    rect(0, 0, lfs.courseVP.w, lfs.courseVP.h);
+
+    // Warning text
+    fill(255, 0, 0);
+    textSize(24);
+    textAlign(CENTER, CENTER);
+    text("OUT OF BOUNDS", lfs.courseVP.w / 2, 30);
+
+    pop();
+  }
+
+  // Draw viewport borders (red when out of bounds, green when on track)
   noFill();
-  stroke(0, 255, 0);
+  const borderColor = lfs.robot.isOutOfBounds(lfs.courseImage, lfs.courseDPI)
+    ? [255, 0, 0]
+    : [0, 255, 0];
+  stroke(...borderColor);
   strokeWeight(2);
   rect(lfs.robotVP.x, lfs.robotVP.y, lfs.robotVP.w, lfs.robotVP.h);
   rect(lfs.courseVP.x, lfs.courseVP.y, lfs.courseVP.w, lfs.courseVP.h);
@@ -722,33 +745,6 @@ window.togglePanel = function() {
   toggle.textContent = panel.classList.contains("collapsed") ? "+" : "−";
 };
 
-window.saveProject = function() {
-  const name = document.getElementById("project-name").value;
-  if (projectManager.saveProject(name, monacoEditor, mapManager, lfs, showStatus)) {
-    document.getElementById("project-name").value = "";
-    localStorage.setItem("lfs-last-project", name);
-  }
-};
-
-window.loadSelectedProject = function() {
-  const select = document.getElementById("project-list");
-  const name = select.value;
-  if (name) {
-    projectManager.loadProject(name, monacoEditor, mapManager, setRobotPosition, showStatus);
-    localStorage.setItem("lfs-last-project", name);
-    select.value = "";
-  }
-};
-
-window.deleteCurrentProject = function() {
-  const select = document.getElementById("project-list");
-  const name = select.value || projectManager.currentProject;
-  if (name) {
-    projectManager.deleteProject(name, showStatus);
-    select.value = "";
-  }
-};
-
 function setupResizer() {
   const resizer = document.getElementById("resizer");
   const editorPanel = document.getElementById("editor-panel");
@@ -814,6 +810,30 @@ function updateUI() {
     fpsEl.textContent = Math.round(frameRate()) + " FPS";
   }
 
+  // Update robot state indicator
+  const stateTextEl = document.getElementById("state-text");
+  const stateIconEl = document.getElementById("state-icon");
+  if (stateTextEl && stateIconEl) {
+    if (lfs.contestState === "run") {
+      if (lfs.robot.isOutOfBounds(lfs.courseImage, lfs.courseDPI)) {
+        stateTextEl.textContent = "Out of Bounds";
+        stateIconEl.className = "state-error";
+      } else {
+        stateTextEl.textContent = "Running";
+        stateIconEl.className = "state-ok";
+      }
+    } else if (lfs.contestState === "stop") {
+      stateTextEl.textContent = "Stopped";
+      stateIconEl.className = "state-warning";
+    } else if (lfs.contestState === "finished") {
+      stateTextEl.textContent = "Finished";
+      stateIconEl.className = "state-ok";
+    } else {
+      stateTextEl.textContent = "Ready";
+      stateIconEl.className = "state-ok";
+    }
+  }
+
   // Update scores
   if (scoreCalculator) {
     const scores = scoreCalculator.getDetailedScores();
@@ -849,6 +869,46 @@ window.saveCustomMap = function() {
   // Custom map functionality - to be implemented if needed
   alert("Custom map feature coming soon!");
   window.closeCustomMapModal();
+};
+
+// Projects Modal Handlers
+window.openProjectModal = function() {
+  const modal = document.getElementById('projects-modal');
+  modal.classList.add('show');
+  projectManager.updateProjectListModal();
+};
+
+window.closeProjectModal = function() {
+  const modal = document.getElementById('projects-modal');
+  modal.classList.remove('show');
+};
+
+window.saveProjectFromModal = function() {
+  const name = document.getElementById('project-name-modal').value;
+  if (projectManager.saveProject(name, monacoEditor, mapManager, lfs, showStatus)) {
+    document.getElementById('project-name-modal').value = '';
+    projectManager.updateProjectListModal();
+    localStorage.setItem('lfs-last-project', name);
+  }
+};
+
+window.loadProjectFromModal = function() {
+  const select = document.getElementById('project-list-modal');
+  const name = select.value;
+  if (name) {
+    projectManager.loadProject(name, monacoEditor, mapManager, lfs, scoreCalculator, setRobotPosition, showStatus);
+    localStorage.setItem('lfs-last-project', name);
+    window.closeProjectModal();
+  }
+};
+
+window.deleteProjectFromModal = function() {
+  const select = document.getElementById('project-list-modal');
+  const name = select.value;
+  if (name) {
+    projectManager.deleteProject(name, showStatus);
+    projectManager.updateProjectListModal();
+  }
 };
 
 // Physics frequency control

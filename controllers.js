@@ -5,12 +5,20 @@ export const TYPE_DEFINITIONS = `
 /**
  * Controller API - Interface for controlling the robot
  * @typedef {Object} ControllerAPI
+ *
+ * BASIC METHODS:
  * @property {function(): number[]} getSensorReadings - Get array of sensor values (0.0=black, 1.0=white)
  * @property {function(number): void} setSpeed - Set target speed in inches/second
  * @property {function(number): void} setTurnRate - Set target turn rate in degrees/second
  * @property {function(): RobotState} getState - Get current robot state
  * @property {function(): number} getTime - Get current contest time in seconds
  * @property {function(): number} getPhysicsHz - Get current physics frequency in Hz
+ *
+ * ADVANCED METHODS (research-informed):
+ * @property {function(): number} getLineError - Calculate line position error (-N/2 to +N/2 for N sensors)
+ * @property {function(): string} getCurveEstimate - Detect curve type: 'straight', 'gentle', or 'sharp'
+ * @property {function(): number} getErrorDerivative - Get rate of change of error (for D term in PID)
+ * @property {function(number, number): void} setSpeedProfile - Set speed with automatic curve slowdown
  */
 
 /**
@@ -27,9 +35,12 @@ export const TYPE_DEFINITIONS = `
 /**
  * User controller class - Implement this!
  *
- * NOTE: Physics frequency is variable (10-1000 Hz). Do NOT hardcode dt = 0.01667!
- * Use api.getTime() for timing instead of counting frames.
- * Competitive robots often run at 500Hz or higher.
+ * NOTES:
+ * - Physics frequency is variable (10-1000 Hz). Do NOT hardcode dt!
+ * - Use api.getTime() for timing instead of counting frames
+ * - Use api.getLineError() instead of manually calculating from sensors
+ * - Use api.getCurveEstimate() for adaptive speed control
+ * - Competitive robots often run at 500Hz or higher
  *
  * @class Controller
  */
@@ -41,17 +52,20 @@ class Controller {
      */
     init(api) {
         // Initialize your variables here
+        // Example: this.Kp = 100; this.Kd = 50;
     }
 
     /**
-     * Update function - called every physics step (NOT every frame!)
-     * Physics frequency is user-configurable (10-120 Hz)
+     * Update function - called every physics step
      * @param {ControllerAPI} api - The controller API
-     * @param {number[]} sensors - Sensor readings array
+     * @param {number[]} sensors - Sensor readings (use api.getLineError() for convenience)
      */
     update(api, sensors) {
         // Your control logic here
-        // Example: api.setSpeed(20); api.setTurnRate(0);
+        // Example:
+        // const error = api.getLineError();
+        // api.setSpeed(20);
+        // api.setTurnRate(this.Kp * error);
     }
 }
 `;
@@ -64,6 +78,11 @@ export class ControllerAPI {
     this.lfs = lfs;
     this.lineSensor = lineSensor;
     this.getPhysicsHzFn = getPhysicsHz; // Function to get current physics frequency
+
+    // History tracking for advanced features
+    this.lastError = 0;
+    this.errorHistory = [];
+    this.maxHistoryLength = 10;
   }
 
   getSensorReadings() {
@@ -95,6 +114,94 @@ export class ControllerAPI {
 
   getPhysicsHz() {
     return this.getPhysicsHzFn();
+  }
+
+  /**
+   * Calculate line position error using centroid method
+   * Returns error value where 0 = centered, negative = left, positive = right
+   * Range: approximately -N/2 to +N/2 where N is number of sensors
+   * @returns {number} Line position error
+   */
+  getLineError() {
+    const sensors = this.getSensorReadings();
+    const n = sensors.length;
+    let lineSum = 0;
+    let positionSum = 0;
+
+    for (let i = 0; i < n; i++) {
+      const lineValue = 1.0 - sensors[i]; // Invert: 0=white, 1=black line
+      lineSum += lineValue;
+      positionSum += lineValue * (i - (n - 1) / 2);
+    }
+
+    // Calculate error (0 when centered)
+    const error = lineSum > 0.1 ? positionSum / lineSum : this.lastError;
+
+    // Track error history for derivative calculation
+    this.errorHistory.push(error);
+    if (this.errorHistory.length > this.maxHistoryLength) {
+      this.errorHistory.shift();
+    }
+    this.lastError = error;
+
+    return error;
+  }
+
+  /**
+   * Estimate curve sharpness from sensor activation pattern
+   * Useful for adaptive speed control
+   * @returns {string} 'straight' | 'gentle' | 'sharp'
+   */
+  getCurveEstimate() {
+    const sensors = this.getSensorReadings();
+    const n = sensors.length;
+
+    // Count how many sensors detect the line (< 0.5 = line detected)
+    let activeSensors = 0;
+    for (let i = 0; i < n; i++) {
+      if (sensors[i] < 0.5) activeSensors++;
+    }
+
+    // More activated sensors typically means tighter curve or wider line
+    if (activeSensors <= 2) {
+      return "straight"; // Narrow line detection = straight section
+    } else if (activeSensors <= 4) {
+      return "gentle"; // Medium activation = gentle curve
+    } else {
+      return "sharp"; // Many sensors = sharp curve or intersection
+    }
+  }
+
+  /**
+   * Get rate of change of line error (useful for PD/PID control)
+   * @returns {number} Error derivative (change per second)
+   */
+  getErrorDerivative() {
+    if (this.errorHistory.length < 2) return 0;
+
+    const dt = 1 / this.getPhysicsHz();
+    const currentError = this.errorHistory[this.errorHistory.length - 1];
+    const previousError = this.errorHistory[this.errorHistory.length - 2];
+
+    return (currentError - previousError) / dt;
+  }
+
+  /**
+   * Simplified speed control with automatic slowdown on curves
+   * @param {number} baseSpeed - Maximum speed on straights (inches/sec)
+   * @param {number} turnSlowdownFactor - Speed multiplier on gentle curves (0-1, default 0.7)
+   */
+  setSpeedProfile(baseSpeed, turnSlowdownFactor = 0.7) {
+    const curve = this.getCurveEstimate();
+    let targetSpeed = baseSpeed;
+
+    if (curve === "gentle") {
+      targetSpeed = baseSpeed * turnSlowdownFactor;
+    } else if (curve === "sharp") {
+      targetSpeed = baseSpeed * (turnSlowdownFactor * 0.7);
+    }
+
+    this.setSpeed(targetSpeed);
   }
 }
 
@@ -209,256 +316,86 @@ class Controller {
 }`,
   },
 
-  bangbang: {
-    name: "Bang-Bang Controller",
-    description: "On/off control - fast but oscillates",
+  pd_control: {
+    name: "PD Controller (No Integral)",
+    description: "Research-backed: often more stable than full PID at high speeds",
     code: `/**
- * Bang-Bang (On-Off) Line Follower
+ * PD-Only Line Follower Controller
  *
- * Simple binary control: turn hard left or hard right.
- * Fast but causes oscillation. Good for sharp turns!
+ * Research finding: Competition teams often use PD control without
+ * the integral term to avoid instability at high speeds.
+ *
+ * Advantages over PID:
+ * - No integral windup issues
+ * - More stable at high speeds
+ * - Simpler to tune (only 2 parameters)
  */
 class Controller {
     init(api) {
-        this.turnRate = 200;  // Turn rate in degrees/second
-        this.threshold = 0.5; // Error threshold for switching
-        this.baseSpeed = 16;
-    }
+        // PD gains - note NO Ki!
+        this.Kp = 120;   // Proportional: responds to current error
+        this.Kd = 60;    // Derivative: dampens oscillations
 
-    update(api, sensors) {
-        const error = this.calculateError(sensors);
-
-        // Bang-bang: full turn left or right based on threshold
-        let turn = 0;
-        if (error > this.threshold) {
-            turn = this.turnRate;  // Turn right
-        } else if (error < -this.threshold) {
-            turn = -this.turnRate;  // Turn left
-        }
-
-        // Slow down when turning
-        const speed = Math.abs(turn) > 0 ? this.baseSpeed * 0.7 : this.baseSpeed;
-
-        api.setSpeed(speed);
-        api.setTurnRate(turn);
-    }
-
-    calculateError(sensors) {
-        const n = sensors.length;
-        let lineSum = 0;
-        let positionSum = 0;
-
-        for (let i = 0; i < n; i++) {
-            const lineValue = 1.0 - sensors[i];
-            lineSum += lineValue;
-            positionSum += lineValue * (i - (n-1)/2);
-        }
-
-        return lineSum > 0.1 ? positionSum / lineSum : 0;
-    }
-}`,
-  },
-
-  statemachine: {
-    name: "State Machine Controller",
-    description: "Handles different scenarios - intersections, lost line",
-    code: `/**
- * State Machine Line Follower
- *
- * Uses different behaviors for different situations:
- * - FOLLOWING: normal line following
- * - LOST: line not detected, search for it
- * - SHARP_TURN: detected sharp turn
- */
-class Controller {
-    init(api) {
-        this.state = 'FOLLOWING';
-        this.Kp = 120;
-        this.lostTimer = 0;
-        this.lastError = 0;
-    }
-
-    update(api, sensors) {
-        const error = this.calculateError(sensors);
-        const lineDetected = this.isLineDetected(sensors);
-
-        // State machine logic
-        switch(this.state) {
-            case 'FOLLOWING':
-                if (!lineDetected) {
-                    this.state = 'LOST';
-                    this.lostTimer = 0;
-                } else if (Math.abs(error) > 3) {
-                    this.state = 'SHARP_TURN';
-                } else {
-                    this.followLine(api, error);
-                }
-                break;
-
-            case 'LOST':
-                this.lostTimer++;
-                // Try to recover by turning in direction of last error
-                api.setSpeed(8);
-                api.setTurnRate(this.lastError > 0 ? 150 : -150);
-
-                if (lineDetected) {
-                    this.state = 'FOLLOWING';
-                } else if (this.lostTimer > 60) {
-                    // Give up after 1 second
-                    api.setSpeed(0);
-                }
-                break;
-
-            case 'SHARP_TURN':
-                // Slow down for sharp turns
-                api.setSpeed(10);
-                api.setTurnRate(this.Kp * error * 1.5);
-
-                if (Math.abs(error) < 2) {
-                    this.state = 'FOLLOWING';
-                }
-                break;
-        }
-
-        this.lastError = error;
-    }
-
-    followLine(api, error) {
-        const baseSpeed = 20;
-        const speed = baseSpeed * (1 - Math.abs(error) * 0.2);
-
-        api.setSpeed(speed);
-        api.setTurnRate(this.Kp * error);
-    }
-
-    isLineDetected(sensors) {
-        let lineSum = 0;
-        for (let i = 0; i < sensors.length; i++) {
-            lineSum += (1.0 - sensors[i]);
-        }
-        return lineSum > 0.5;
-    }
-
-    calculateError(sensors) {
-        const n = sensors.length;
-        let lineSum = 0;
-        let positionSum = 0;
-
-        for (let i = 0; i < n; i++) {
-            const lineValue = 1.0 - sensors[i];
-            lineSum += lineValue;
-            positionSum += lineValue * (i - (n-1)/2);
-        }
-
-        return lineSum > 0.1 ? positionSum / lineSum : this.lastError;
-    }
-}`,
-  },
-
-  fuzzy: {
-    name: "Fuzzy Logic Controller",
-    description: "Advanced: uses fuzzy rules for smooth control",
-    code: `/**
- * Fuzzy Logic Line Follower
- *
- * Uses fuzzy logic to map error to turn rate.
- * Linguistic variables: NegativeBig, NegativeSmall, Zero, PositiveSmall, PositiveBig
- * Smooth transitions between states.
- */
-class Controller {
-    init(api) {
+        // Speed settings
         this.baseSpeed = 18;
     }
 
     update(api, sensors) {
-        const error = this.calculateError(sensors);
+        // Use API helper to get error (no manual calculation needed!)
+        const error = api.getLineError();
+        const derivative = api.getErrorDerivative();
 
-        // Fuzzification: calculate membership for each fuzzy set
-        const fuzzyError = this.fuzzify(error);
+        // PD calculation (no integral term)
+        const correction = this.Kp * error + this.Kd * derivative;
 
-        // Fuzzy inference: apply rules
-        const fuzzyTurn = this.inference(fuzzyError);
-
-        // Defuzzification: convert fuzzy output to crisp value
-        const turnRate = this.defuzzify(fuzzyTurn);
-
-        // Adaptive speed based on error magnitude
-        const speed = this.baseSpeed * (1 - Math.abs(error) * 0.25);
-
-        api.setSpeed(speed);
-        api.setTurnRate(turnRate);
+        // Apply control
+        api.setSpeed(this.baseSpeed);
+        api.setTurnRate(correction);
     }
+}`,
+  },
 
-    fuzzify(error) {
-        // Map error to fuzzy sets using triangular membership functions
-        return {
-            NB: this.triangleMF(error, -6, -4, -2),  // Negative Big
-            NS: this.triangleMF(error, -3, -1.5, 0),  // Negative Small
-            Z:  this.triangleMF(error, -1, 0, 1),     // Zero
-            PS: this.triangleMF(error, 0, 1.5, 3),    // Positive Small
-            PB: this.triangleMF(error, 2, 4, 6)       // Positive Big
+  adaptive_speed: {
+    name: "Adaptive Speed Controller",
+    description: "Automatically slows down on curves, speeds up on straights",
+    code: `/**
+ * Adaptive Speed Line Follower
+ *
+ * Research finding: Competition robots adjust speed dynamically
+ * based on curve detection for optimal lap times.
+ *
+ * This controller uses the curve estimation API to automatically
+ * slow down on turns and speed up on straight sections.
+ */
+class Controller {
+    init(api) {
+        // PD control gains
+        this.Kp = 130;
+        this.Kd = 55;
+
+        // Speed profile configuration
+        this.speeds = {
+            straight: 22,    // Fast on straights
+            gentle: 16,      // Medium on gentle curves
+            sharp: 10        // Slow on sharp turns
         };
     }
 
-    triangleMF(x, a, b, c) {
-        // Triangular membership function
-        if (x <= a || x >= c) return 0;
-        if (x === b) return 1;
-        if (x < b) return (x - a) / (b - a);
-        return (c - x) / (c - b);
-    }
+    update(api, sensors) {
+        // Get error and derivative using API helpers
+        const error = api.getLineError();
+        const derivative = api.getErrorDerivative();
 
-    inference(fuzzyError) {
-        // Fuzzy rules:
-        // IF error is NB THEN turn is NB (turn hard left)
-        // IF error is NS THEN turn is NS (turn soft left)
-        // IF error is Z THEN turn is Z (go straight)
-        // IF error is PS THEN turn is PS (turn soft right)
-        // IF error is PB THEN turn is PB (turn hard right)
+        // PD control for steering
+        const correction = this.Kp * error + this.Kd * derivative;
 
-        return {
-            NB: fuzzyError.NB,
-            NS: fuzzyError.NS,
-            Z:  fuzzyError.Z,
-            PS: fuzzyError.PS,
-            PB: fuzzyError.PB
-        };
-    }
+        // Adaptive speed based on curve detection
+        const curveType = api.getCurveEstimate();
+        const targetSpeed = this.speeds[curveType] || this.speeds.gentle;
 
-    defuzzify(fuzzyTurn) {
-        // Center of gravity defuzzification
-        // Map fuzzy sets to turn rates
-        const turnRates = {
-            NB: -250,  // Hard left
-            NS: -100,  // Soft left
-            Z:  0,     // Straight
-            PS: 100,   // Soft right
-            PB: 250    // Hard right
-        };
-
-        let numerator = 0;
-        let denominator = 0;
-
-        for (let key in fuzzyTurn) {
-            numerator += fuzzyTurn[key] * turnRates[key];
-            denominator += fuzzyTurn[key];
-        }
-
-        return denominator > 0 ? numerator / denominator : 0;
-    }
-
-    calculateError(sensors) {
-        const n = sensors.length;
-        let lineSum = 0;
-        let positionSum = 0;
-
-        for (let i = 0; i < n; i++) {
-            const lineValue = 1.0 - sensors[i];
-            lineSum += lineValue;
-            positionSum += lineValue * (i - (n-1)/2);
-        }
-
-        return lineSum > 0.1 ? positionSum / lineSum : 0;
+        // Apply control
+        api.setSpeed(targetSpeed);
+        api.setTurnRate(correction);
     }
 }`,
   },

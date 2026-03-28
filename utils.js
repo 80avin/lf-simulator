@@ -250,24 +250,25 @@ export class ProjectManager {
     localStorage.setItem(this.storageKey, JSON.stringify(projects));
     this.currentProject = name;
 
-    this.updateProjectList();
     showStatus("✓ Project saved: " + name, "success");
     return true;
   }
 
-  loadProject(name, monacoEditor, mapManager, setRobotPosition, showStatus) {
+  loadProject(name, monacoEditor, mapManager, lfs, scoreCalculator, setRobotPosition, showStatus) {
     const projects = this.loadProjects();
     const project = projects[name];
 
     if (project) {
       monacoEditor.setValue(project.code);
 
-      // Load map
+      // Load map with all required parameters
       if (project.config.mapId) {
-        mapManager.loadMap(project.config.mapId);
+        mapManager.loadMap(project.config.mapId, lfs, scoreCalculator, setRobotPosition, showStatus);
+      } else {
+        // If no map config, just set robot position
+        setRobotPosition(...project.config.robotPos);
       }
 
-      setRobotPosition(...project.config.robotPos);
       this.currentProject = name;
       showStatus("✓ Project loaded: " + name, "success");
       return true;
@@ -282,7 +283,6 @@ export class ProjectManager {
       const projects = this.loadProjects();
       delete projects[name];
       localStorage.setItem(this.storageKey, JSON.stringify(projects));
-      this.updateProjectList();
 
       if (this.currentProject === name) {
         this.currentProject = null;
@@ -299,18 +299,28 @@ export class ProjectManager {
     return stored ? JSON.parse(stored) : {};
   }
 
-  updateProjectList() {
+  updateProjectListModal() {
     const projects = this.loadProjects();
-    const select = document.getElementById("project-list");
-    select.innerHTML = '<option value="">Load Project...</option>';
+    const select = document.getElementById("project-list-modal");
+    if (!select) return;
 
-    Object.keys(projects)
-      .sort()
-      .forEach((name) => {
+    select.innerHTML = "";
+
+    const projectNames = Object.keys(projects).sort();
+
+    if (projectNames.length === 0) {
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = "No saved projects";
+      option.disabled = true;
+      select.appendChild(option);
+    } else {
+      projectNames.forEach((name) => {
         const option = document.createElement("option");
         option.value = name;
         option.textContent = name;
         select.appendChild(option);
       });
+    }
   }
 }
